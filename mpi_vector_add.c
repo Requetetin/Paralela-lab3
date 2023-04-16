@@ -36,7 +36,11 @@ void Read_vector(double local_a[], int local_n, int n, char vec_name[],
       int my_rank, MPI_Comm comm);
 void Print_vector(double local_b[], int local_n, int n, char title[],
       int my_rank, MPI_Comm comm);
+void Sum_dot_vector(double local_b[], int local_n, int n, int my_rank,
+      MPI_Comm comm);
 void Parallel_vector_sum(double local_x[], double local_y[],
+      double local_z[], int local_n);
+void Parallel_vector_dot(double local_x[], double local_y[],
       double local_z[], int local_n);
 
 
@@ -53,22 +57,28 @@ int main(void) {
    MPI_Comm_size(comm, &comm_sz);
    MPI_Comm_rank(comm, &my_rank);
 
-   //Read_n(&n, &local_n, my_rank, comm_sz, comm);
-   n = 10000000;
+   Read_n(&n, &local_n, my_rank, comm_sz, comm);
+   n = 16;
    tstart = MPI_Wtime();
    Allocate_vectors(&local_x, &local_y, &local_z, local_n, comm);
 
    Read_vector(local_x, local_n, n, "x", my_rank, comm);
-   //Print_vector(local_x, local_n, n, "x is", my_rank, comm);
+   Print_vector(local_x, local_n, n, "x is", my_rank, comm);
    Read_vector(local_y, local_n, n, "y", my_rank, comm);
-   //Print_vector(local_y, local_n, n, "y is", my_rank, comm);
+   Print_vector(local_y, local_n, n, "y is", my_rank, comm);
 
-   Parallel_vector_sum(local_x, local_y, local_z, local_n);
+   //Parallel_vector_sum(local_x, local_y, local_z, local_n);
+
+
+   Parallel_vector_dot(local_x, local_y, local_z, local_n);
+   Print_vector(local_z, local_n, n, "The dot vector is", my_rank, comm);
+   Sum_dot_vector(local_z, local_n, n, my_rank, comm);
    tend = MPI_Wtime();
+  
 
-   //Print_vector(local_z, local_n, n, "The sum is", my_rank, comm);
-   if(my_rank==0)
-    printf("\nTook %f ms to run\n", (tend-tstart)*1000);
+   if(my_rank==0) {
+      printf("\nTook %f ms to run\n", (tend-tstart)*1000);
+   }
 
    free(local_x);
    free(local_y);
@@ -283,6 +293,32 @@ void Print_vector(
    }
 }  /* Print_vector */
 
+void Sum_dot_vector(double local_b[], int local_n, int n, int my_rank, MPI_Comm comm) {
+      double* b = NULL;
+      int i;
+      int local_ok = 1;
+      char* fname = "Sum_dot_vector";
+      double local_sum = 0;
+
+      if (my_rank == 0) {
+            b = malloc(n*sizeof(double));
+            if (b == NULL) local_ok = 0;
+            Check_for_error(local_ok, fname, "Can't allocate temporary vector",
+                  comm);
+            MPI_Gather(local_b, local_n, MPI_DOUBLE, b, local_n, MPI_DOUBLE,
+                  0, comm);
+            for (i = 0; i < n; i++)
+                  local_sum += b[i];
+            printf("RESULT: %lf\n", local_sum);
+            free(b);
+      } else {
+            Check_for_error(local_ok, fname, "Can't allocate temporary vector",
+                  comm);
+            MPI_Gather(local_b, local_n, MPI_DOUBLE, b, local_n, MPI_DOUBLE, 0,
+                  comm);
+      }
+}
+
 
 /*-------------------------------------------------------------------
  * Function:  Parallel_vector_sum
@@ -303,3 +339,14 @@ void Parallel_vector_sum(
    for (local_i = 0; local_i < local_n; local_i++)
       local_z[local_i] = local_x[local_i] + local_y[local_i];
 }  /* Parallel_vector_sum */
+
+void Parallel_vector_dot(
+      double local_x[],
+      double local_y[],
+      double local_z[],
+      int local_n
+) {
+      for (int local_i = 0; local_i < local_n; local_i++) {
+            local_z[local_i] = (local_x[local_i] * local_y[local_i]);
+      }
+}
