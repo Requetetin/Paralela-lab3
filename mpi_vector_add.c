@@ -42,6 +42,8 @@ void Parallel_vector_sum(double local_x[], double local_y[],
       double local_z[], int local_n);
 void Parallel_vector_dot(double local_x[], double local_y[],
       double local_z[], int local_n);
+void Parallel_scalar_prod(double local_x[], double local_vec[],
+      int local_n, double scalar);
 
 
 /*-------------------------------------------------------------------*/
@@ -67,12 +69,19 @@ int main(void) {
    Read_vector(local_y, local_n, n, "y", my_rank, comm);
    Print_vector(local_y, local_n, n, "y is", my_rank, comm);
 
-   //Parallel_vector_sum(local_x, local_y, local_z, local_n);
+   Parallel_vector_sum(local_x, local_y, local_z, local_n);
+   Print_vector(local_z, local_n, n, "The sum vector is", my_rank, comm);
 
 
    Parallel_vector_dot(local_x, local_y, local_z, local_n);
    Print_vector(local_z, local_n, n, "The dot vector is", my_rank, comm);
    Sum_dot_vector(local_z, local_n, n, my_rank, comm);
+
+   Parallel_scalar_prod(local_x, local_z, local_n, 5);
+   Print_vector(local_z, local_n, n, "The scalar product of x is", my_rank, comm);
+
+   Parallel_scalar_prod(local_y, local_z, local_n, 5);
+   Print_vector(local_z, local_n, n, "The scalar product of y is", my_rank, comm);
    tend = MPI_Wtime();
   
 
@@ -348,5 +357,16 @@ void Parallel_vector_dot(
 ) {
       for (int local_i = 0; local_i < local_n; local_i++) {
             local_z[local_i] = (local_x[local_i] * local_y[local_i]);
+      }
+}
+
+void Parallel_scalar_prod(
+      double local_vec[],
+      double local_z[],
+      int local_n,
+      double scalar
+) {
+      for (int local_i = 0; local_i < local_n; local_i++) {
+            local_z[local_i] = local_vec[local_i] * scalar;
       }
 }
