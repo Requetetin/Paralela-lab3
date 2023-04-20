@@ -16,6 +16,8 @@
  */
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
+#include <omp.h>
 
 void Read_n(int* n_p);
 void Allocate_vectors(double** x_pp, double** y_pp, double** z_pp, int n);
@@ -25,22 +27,46 @@ void Vector_sum(double x[], double y[], double z[], int n);
 
 /*---------------------------------------------------------------------*/
 int main(void) {
-   int n;
+   double t_init = omp_get_wtime();
+   int n = 100000;
+   int* vector1 = (int*) malloc(n * sizeof(int));
+   int* vector2 = (int*) malloc(n * sizeof(int));
+   srand(time(NULL));
+   for (int i = 0; i < n; i++) {
+        vector1[i] = rand();
+        vector2[i] = rand();
+   }
+
+   printf("Vector 1: ");
+    for (int i = 0; i < 10; i++) {
+        printf("%d ", vector1[i]);
+    }
+    printf("\n");
+    
+    printf("Vector 2: ");
+    for (int i = 0; i < 10; i++) {
+        printf("%d ", vector2[i]);
+    }
+    printf("\n");
    double *x, *y, *z;
 
-   Read_n(&n);
    Allocate_vectors(&x, &y, &z, n);
    
-   Read_vector(x, n, "x");
-   Read_vector(y, n, "y");
    
    Vector_sum(x, y, z, n);
 
-   Print_vector(z, n, "The sum is");
+
+   double t_fin = omp_get_wtime();
+   double delta = t_fin - t_init;
+   printf("\nTiempo: %f",delta);
+   printf("\n");
 
    free(x);
    free(y);
    free(z);
+
+   free(vector1);
+   free(vector2);
 
    return 0;
 }  /* main */
