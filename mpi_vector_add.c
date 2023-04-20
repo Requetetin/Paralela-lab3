@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <mpi.h>
+#include <time.h>
 
 void Check_for_error(int local_ok, char fname[], char message[],
       MPI_Comm comm);
@@ -38,12 +39,10 @@ void Print_vector(double local_b[], int local_n, int n, char title[],
       int my_rank, MPI_Comm comm);
 void Print_vector_limits(double local_b[], int local_n, int n, char title[],
       int my_rank, MPI_Comm comm);
-void Sum_dot_vector(double local_b[], int local_n, int n, int my_rank,
-      MPI_Comm comm);
 void Parallel_vector_sum(double local_x[], double local_y[],
       double local_z[], int local_n);
-void Parallel_vector_dot(double local_x[], double local_y[],
-      double local_z[], int local_n);
+double Parallel_vector_dot(double local_x[], double local_y[],
+      int local_n);
 void Parallel_scalar_prod(double local_x[], double local_vec[],
       int local_n, double scalar);
 
@@ -55,6 +54,8 @@ int main(void) {
    double *local_x, *local_y, *local_z;
    MPI_Comm comm;
    double tstart, tend;
+   double dot_result;
+   double local_dot_result;
 
    MPI_Init(NULL, NULL);
    comm = MPI_COMM_WORLD;
@@ -62,12 +63,12 @@ int main(void) {
    MPI_Comm_rank(comm, &my_rank);
 
    Read_n(&n, &local_n, my_rank, comm_sz, comm);
-   n = 40;
+   n = 24;
    tstart = MPI_Wtime();
    Allocate_vectors(&local_x, &local_y, &local_z, local_n, comm);
 
    Read_vector(local_x, local_n, n, "x", my_rank, comm);
-   Print_vector_limits(local_x, local_n, n, "x is", my_rank, comm);
+   Print_vector(local_x, local_n, n, "x is", my_rank, comm);
    Read_vector(local_y, local_n, n, "y", my_rank, comm);
    Print_vector(local_y, local_n, n, "y is", my_rank, comm);
 
@@ -75,9 +76,8 @@ int main(void) {
    Print_vector(local_z, local_n, n, "The sum vector is", my_rank, comm);
 
 
-   Parallel_vector_dot(local_x, local_y, local_z, local_n);
-   Print_vector(local_z, local_n, n, "The dot vector is", my_rank, comm);
-   Sum_dot_vector(local_z, local_n, n, my_rank, comm);
+   local_dot_result = Parallel_vector_dot(local_x, local_y, local_n);
+   MPI_Reduce(&local_dot_result, &dot_result, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
 
    Parallel_scalar_prod(local_x, local_z, local_n, 5);
    Print_vector(local_z, local_n, n, "The scalar product of x is", my_rank, comm);
@@ -89,6 +89,7 @@ int main(void) {
 
    if(my_rank==0) {
       printf("\nTook %f ms to run\n", (tend-tstart)*1000);
+      printf("\nThe result of the dot product is: %f\n", dot_result);
    }
 
    free(local_x);
@@ -240,8 +241,9 @@ void Read_vector(
             comm);
       //printf("Enter the vector %s\n", vec_name);
       //fill vec with indez
+      srand(time (NULL) + my_rank * my_rank);
       for (i = 0; i < n; i++)
-         a[i] = i;
+         a[i] = rand();
       MPI_Scatter(a, local_n, MPI_DOUBLE, local_a, local_n, MPI_DOUBLE, 0,
          comm);
       free(a);
@@ -304,6 +306,23 @@ void Print_vector(
    }
 }  /* Print_vector */
 
+/*-------------------------------------------------------------------
+ * Function:  Print_vector_limits
+ * Purpose:   Print a vectors first and last 10 elements
+ * In args:   local_b:  local storage for vector to be printed
+ *            local_n:  order of local vectors
+ *            n:        order of global vector (local_n*comm_sz)
+ *            title:    title to precede print out
+ *            comm:     communicator containing processes calling
+ *                      Print_vector
+ *
+ * Error:     if process 0 can't allocate temporary storage for
+ *            the full vector, the program terminates.
+ *
+ * Note:
+ *    Assumes order of vector is evenly divisible by the number of
+ *    processes
+ */
 void Print_vector_limits(
       double    local_b[]  /* in */,
       int       local_n    /* in */,
@@ -343,33 +362,7 @@ void Print_vector_limits(
       MPI_Gather(local_b, local_n, MPI_DOUBLE, b, local_n, MPI_DOUBLE, 0,
          comm);
    }
-}  /* Print_vector */
-
-void Sum_dot_vector(double local_b[], int local_n, int n, int my_rank, MPI_Comm comm) {
-      double* b = NULL;
-      int i;
-      int local_ok = 1;
-      char* fname = "Sum_dot_vector";
-      double local_sum = 0;
-
-      if (my_rank == 0) {
-            b = malloc(n*sizeof(double));
-            if (b == NULL) local_ok = 0;
-            Check_for_error(local_ok, fname, "Can't allocate temporary vector",
-                  comm);
-            MPI_Gather(local_b, local_n, MPI_DOUBLE, b, local_n, MPI_DOUBLE,
-                  0, comm);
-            for (i = 0; i < n; i++)
-                  local_sum += b[i];
-            printf("RESULT: %lf\n", local_sum);
-            free(b);
-      } else {
-            Check_for_error(local_ok, fname, "Can't allocate temporary vector",
-                  comm);
-            MPI_Gather(local_b, local_n, MPI_DOUBLE, b, local_n, MPI_DOUBLE, 0,
-                  comm);
-      }
-}
+}  /* Print_vector_limits */
 
 
 /*-------------------------------------------------------------------
@@ -392,17 +385,37 @@ void Parallel_vector_sum(
       local_z[local_i] = local_x[local_i] + local_y[local_i];
 }  /* Parallel_vector_sum */
 
-void Parallel_vector_dot(
+/*-------------------------------------------------------------------
+ * Function:  Parallel_vector_dot
+ * Purpose:   Find the dot product between two vectors
+ * In args:   local_x:  local storage of one of the vectors being added
+ *            local_y:  local storage for the second vector being added
+ *            local_n:  the number of components in local_x, local_y,
+ *                      and local_z
+ * Out arg:   local_result:  local storage for the dot product of the two vectors
+ */
+double Parallel_vector_dot(
       double local_x[],
       double local_y[],
-      double local_z[],
       int local_n
 ) {
+      double local_result = 0;
       for (int local_i = 0; local_i < local_n; local_i++) {
-            local_z[local_i] = (local_x[local_i] * local_y[local_i]);
+            local_result += (local_x[local_i] * local_y[local_i]);
       }
-}
 
+      return local_result;
+} /* Parallel_vector_dot */
+
+/*-------------------------------------------------------------------
+ * Function:  Parallel_scalar_prod
+ * Purpose:   Operate a vector by a scalar value
+ * In args:   local_vec:  local storage of the vector being operated on
+ *            local_n:  the number of components in local_x, local_y,
+ *                      and local_z
+ *            scalar:  the scalar the vector will be operated by
+ * Out arg:   local_z:  local storage for the multiplied vector
+ */
 void Parallel_scalar_prod(
       double local_vec[],
       double local_z[],
