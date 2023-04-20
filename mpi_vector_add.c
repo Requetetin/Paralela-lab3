@@ -36,6 +36,8 @@ void Read_vector(double local_a[], int local_n, int n, char vec_name[],
       int my_rank, MPI_Comm comm);
 void Print_vector(double local_b[], int local_n, int n, char title[],
       int my_rank, MPI_Comm comm);
+void Print_vector_limits(double local_b[], int local_n, int n, char title[],
+      int my_rank, MPI_Comm comm);
 void Sum_dot_vector(double local_b[], int local_n, int n, int my_rank,
       MPI_Comm comm);
 void Parallel_vector_sum(double local_x[], double local_y[],
@@ -60,12 +62,12 @@ int main(void) {
    MPI_Comm_rank(comm, &my_rank);
 
    Read_n(&n, &local_n, my_rank, comm_sz, comm);
-   n = 16;
+   n = 40;
    tstart = MPI_Wtime();
    Allocate_vectors(&local_x, &local_y, &local_z, local_n, comm);
 
    Read_vector(local_x, local_n, n, "x", my_rank, comm);
-   Print_vector(local_x, local_n, n, "x is", my_rank, comm);
+   Print_vector_limits(local_x, local_n, n, "x is", my_rank, comm);
    Read_vector(local_y, local_n, n, "y", my_rank, comm);
    Print_vector(local_y, local_n, n, "y is", my_rank, comm);
 
@@ -292,6 +294,47 @@ void Print_vector(
       printf("%s\n", title);
       for (i = 0; i < n; i++)
          printf("%f ", b[i]);
+      printf("\n");
+      free(b);
+   } else {
+      Check_for_error(local_ok, fname, "Can't allocate temporary vector",
+            comm);
+      MPI_Gather(local_b, local_n, MPI_DOUBLE, b, local_n, MPI_DOUBLE, 0,
+         comm);
+   }
+}  /* Print_vector */
+
+void Print_vector_limits(
+      double    local_b[]  /* in */,
+      int       local_n    /* in */,
+      int       n          /* in */,
+      char      title[]    /* in */,
+      int       my_rank    /* in */,
+      MPI_Comm  comm       /* in */) {
+
+   double* b = NULL;
+   int i;
+   int local_ok = 1;
+   char* fname = "Print_vector";
+
+   if (my_rank == 0) {
+      b = malloc(n*sizeof(double));
+      if (b == NULL) local_ok = 0;
+      Check_for_error(local_ok, fname, "Can't allocate temporary vector",
+            comm);
+      MPI_Gather(local_b, local_n, MPI_DOUBLE, b, local_n, MPI_DOUBLE,
+            0, comm);
+      printf("%s\n", title);
+      if (n > 20) {
+            for (i = 0; (i < n && i < 10); i++)
+            printf("%f ", b[i]);
+            printf(" ... ");
+            for (i = n-10; i < n; i++) 
+                  printf("%f ", b[i]);
+      } else {
+            for (i = 0; i < n; i++)
+            printf("%f ", b[i]);
+      }
       printf("\n");
       free(b);
    } else {
